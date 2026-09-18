@@ -12,9 +12,18 @@ extends EditorPlugin
 # matches the playable ground exactly, in whatever the SDK ships, and no game
 # material is redistributed.
 #
-# The terrain is added with owner = null. Godot only saves nodes that have an
-# owner, so it can never be written into the user's level, cannot be exported by
-# accident, and the shipped terrain underneath is left untouched.
+# The terrain goes under the level's "Static" node, beside its own
+# MP_<Map>_Terrain and MP_<Map>_Assets, and it IS owned, so it appears in the
+# Scene dock and can be selected, hidden or deleted like any other node.
+#
+# It used to be added with owner = null to keep it out of the saved file. That
+# also kept it out of the Scene dock, so there was nothing to select and nothing
+# to hide: the node was there and invisible to the person meant to manage it.
+#
+# Owning it is safe only because the download lands in res:// and goes through
+# Godot's import pipeline, so the instance has a scene_file_path and saving the
+# level writes a reference. A mesh parsed at runtime from user:// has no such
+# path, and owning THAT would serialise every vertex into the .tscn.
 
 const Fetch = preload("terrain_fetch.gd")
 
@@ -241,7 +250,7 @@ func _on_quality_selected(i: int) -> void:
 		_update_cache_button()
 		return
 
-	var node: Node = _fetch.load_mesh(path)
+	var node: Node = _instance_of(path)
 	if node == null:
 		_status.text = "Could not read the terrain: " + str(_fetch.error)
 		_quality.select(0)
@@ -334,7 +343,7 @@ func _on_backdrop_toggled(on: bool) -> void:
 		_status.text = "Backdrop download failed: " + str(_fetch.error)
 		_backdrop.set_pressed_no_signal(false)
 		return
-	var node: Node = _fetch.load_mesh(path)
+	var node: Node = _instance_of(path)
 	if node == null:
 		_status.text = "Could not read the backdrop: " + str(_fetch.error)
 		_backdrop.set_pressed_no_signal(false)
@@ -352,7 +361,7 @@ func _on_backdrop_toggled(on: bool) -> void:
 		_status.text = "The backdrop parsed but held no visible surfaces."
 		_backdrop.set_pressed_no_signal(false)
 		return
-	root.add_child(node)
+	_attach(root, node)
 	_status.text = "Backdrop: %d surface(s)%s" % [bound,
 		"" if int(e.get("instances", 0)) == 0 else ", %d pieces" % int(e["instances"])]
 	_update_cache_button()
@@ -366,6 +375,56 @@ func _remove_named(root: Node, suffix: String) -> void:
 		if String(c.name).contains(suffix):
 			root.remove_child(c)
 			c.queue_free()
+
+
+# ---- where the terrain goes in the scene -------------------------------------
+# Under "Static", beside the level's own MP_<Map>_Terrain and MP_<Map>_Assets,
+# which is where a Portal level keeps its static geometry and therefore the only
+# place someone would think to look for more of it.
+#
+# AND IT IS OWNED, so it shows up in the Scene dock and can be selected, hidden
+# or deleted like anything else. An earlier version used owner = null to keep it
+# out of the saved file; that also kept it out of the dock entirely, so there was
+# nothing to hide - the node existed but was invisible to the person who wanted
+# to manage it.
+#
+# Owning it is only safe because the mesh is an IMPORTED resource in res://. The
+# instance therefore has a scene_file_path and the level saves a one-line
+# reference to it. Were the mesh built at runtime from user://, as it used to be,
+# owning the node would serialise every vertex into the .tscn.
+func _attach(root: Node, node: Node) -> void:
+	var parent: Node = _static_parent(root)
+	parent.add_child(node)
+	node.owner = root
+
+
+func _static_parent(root: Node) -> Node:
+	for c in root.get_children():
+		if String(c.name) == "Static":
+			return c
+	# A level that has no Static node is unusual but not broken; make one rather
+	# than dropping the terrain at the root where it does not belong.
+	var n := Node3D.new()
+	n.name = "Static"
+	root.add_child(n)
+	n.owner = root
+	return n
+
+
+# The imported resource, not a runtime parse. ResourceLoader works here BECAUSE
+# the download lands in res:// and has been through the import pipeline; that is
+# what gives the instance a scene_file_path and keeps the saved level small.
+func _instance_of(res_path: String) -> Node:
+	if not ResourceLoader.exists(res_path):
+		return null
+	var r: Variant = ResourceLoader.load(res_path)
+	if r is PackedScene:
+		return (r as PackedScene).instantiate()
+	if r is Mesh:
+		var mi := MeshInstance3D.new()
+		mi.mesh = r
+		return mi
+	return null
 
 
 func _remove_terrain(root: Node) -> void:

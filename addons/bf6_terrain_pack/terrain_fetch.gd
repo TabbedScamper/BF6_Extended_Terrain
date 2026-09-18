@@ -25,7 +25,19 @@ const INDEX_URL := "https://raw.githubusercontent.com/%s/main/terrain_index.json
 # does not have would break it. Bump DATA_TAG when the asset set changes shape.
 const DATA_TAG := "v1.0.0"
 const RELEASE_API := "https://api.github.com/repos/%s/releases/tags/%s"
-const CACHE_DIR := "user://bf6_terrain_pack"
+# THE CACHE LIVES IN THE PROJECT, NOT IN user://.
+#
+# It has to, for the terrain to be a real node in the scene tree. A file under
+# user:// is invisible to Godot's import pipeline, so a mesh built from one is a
+# runtime resource with no scene_file_path - and a node holding that serialises
+# its ENTIRE MESH into the .tscn when the level is saved. Hundreds of megabytes
+# of vertex data written into someone's level file is not a cache, it is a
+# disaster with a delay on it.
+#
+# Downloaded into res:// instead, Godot imports it like any other asset, the
+# node instances from a real PackedScene, and saving the level writes a one-line
+# reference to it. "Clear downloaded files" removes them again.
+const CACHE_DIR := "res://bf6_terrain_pack"
 const USER_AGENT := "BF6-Extended-Terrain-Plugin"
 
 var error := ""
@@ -173,6 +185,9 @@ func ensure(asset: String) -> String:
 		DirAccess.remove_absolute(part)
 		error = "could not move the finished download into place"
 		return ""
+	if not await import_into_project(dest):
+		error = "downloaded, but Godot did not import it"
+		return ""
 	return dest
 
 
@@ -193,6 +208,25 @@ func cache_bytes() -> int:
 			total += fa.get_length()
 			fa.close()
 	return total
+
+
+# Godot does not notice a file that appeared underneath it. scan() is DEFERRED,
+# so the scan has to be waited out rather than assumed: asking for the resource
+# too early gets "Can't find file during file reimport", or simply nothing.
+func import_into_project(res_path: String) -> bool:
+	if not Engine.is_editor_hint():
+		return true
+	var fs: EditorFileSystem = EditorInterface.get_resource_filesystem()
+	if fs == null:
+		return ResourceLoader.exists(res_path)
+	fs.scan()
+	# generous, because a large glb genuinely takes a while to import and
+	# failing early here looks exactly like a failed download
+	for i in range(3600):
+		await get_tree().process_frame
+		if not fs.is_scanning() and ResourceLoader.exists(res_path):
+			return true
+	return ResourceLoader.exists(res_path)
 
 
 # ---------------------------------------------------------------- the mesh
