@@ -27,6 +27,9 @@ const Fetch = preload("terrain_fetch.gd")
 const NODE_SUFFIX := "_Extended_Terrain_"
 # Used only when a level has no <Map>_Terrain node to read a material from.
 const SDK_GREEN := Color(0.4078, 0.5608, 0.3098)
+# One grid cell of the SDK terrain material, in metres. Measured off the SDK's
+# own MP_Capstone_Terrain: its UVs span 0..100 over 1200.4 m.
+const GRID_M := 12.0
 
 var _dock: VBoxContainer
 var _map_lbl: Label
@@ -230,7 +233,8 @@ func _on_quality_selected(i: int) -> void:
 	# detail level it is without anyone having to check.
 	var q_m: String = Fetch.metres(float(_quality_metres(i)))
 	node.name = "%s%s%sm" % [_map_name(), NODE_SUFFIX, q_m]
-	var mat: Material = _sdk_terrain_material(root, _map_name())
+	var mat: Material = _tiled_material(_sdk_terrain_material(root, _map_name()),
+										_span_of(node))
 	var bound: int = _apply_material(node, mat)
 	if bound == 0:
 		# Zero surfaces means nothing was recognised, not that the terrain is
@@ -281,6 +285,54 @@ func _remove_terrain(root: Node) -> void:
 		if String(c.name).contains(NODE_SUFFIX):
 			root.remove_child(c)
 			c.queue_free()
+
+
+# THE GRID HAS TO BE TILED BY THE MATERIAL, because the mesh cannot do it.
+#
+# M_LevelTerrain keeps the green AND the grid in a 256x256 albedo texture
+# sampled through UV1 - measured: albedo_color is white, uv1_triplanar false,
+# uv1_scale (1,1,1), so it tiles nothing by itself. The pack's meshes carry
+# 0..1 UVs across the whole map, so applied unchanged the material stretches a
+# single grid cell over several kilometres and the pattern disappears.
+#
+# Scaling by span/12 puts one cell every 12 m, which is what the SDK's own
+# terrain measures (UV 0..100 over 1200.4 m). Done on a DUPLICATE: the material
+# belongs to the level and editing it in place would re-tile the shipped terrain
+# too. This is the same fix, for the same reason, as highpoly_mapcontext.gd:4317.
+static func _tiled_material(base: Material, span: float) -> Material:
+	if base == null or span <= 0.0:
+		return base
+	if not (base is BaseMaterial3D):
+		return base          # a ShaderMaterial tiles however its shader says
+	var m: BaseMaterial3D = (base as BaseMaterial3D).duplicate()
+	var cells: float = span / GRID_M
+	m.uv1_scale = Vector3(cells, cells, 1.0)
+	return m
+
+
+# How many metres across the placed terrain is, taken from the geometry rather
+# than assumed: the pack covers a different span on different maps, from 2048 m
+# to 8192 m, and a fixed number would mis-tile most of them.
+static func _span_of(node: Node) -> float:
+	var box := AABB()
+	var first := true
+	for m in _all_meshes(node):
+		var mi: MeshInstance3D = m
+		if mi.mesh == null:
+			continue
+		var a: AABB = mi.mesh.get_aabb()
+		box = a if first else box.merge(a)
+		first = false
+	return 0.0 if first else maxf(box.size.x, box.size.z)
+
+
+static func _all_meshes(n: Node) -> Array:
+	var out: Array = []
+	if n is MeshInstance3D:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_all_meshes(c))
+	return out
 
 
 # The SDK's own terrain material, read off the level's existing terrain node.
