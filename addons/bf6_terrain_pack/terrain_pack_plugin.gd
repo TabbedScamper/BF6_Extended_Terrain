@@ -25,6 +25,11 @@ const Fetch = preload("terrain_fetch.gd")
 # matching the fixed part is what lets a different quality replace an existing
 # one instead of stacking a second copy on top of it.
 const NODE_SUFFIX := "_Extended_Terrain_"
+# The backdrop is a separate download and a separate node, named the same way:
+# MP_Capstone_Backdrop. It is the distant landscape beyond the heightfield's
+# edge, so it is independent of which terrain density is loaded, and switching
+# density must not silently drop it.
+const BACKDROP_SUFFIX := "_Backdrop"
 # Used only when a level has no <Map>_Terrain node to read a material from.
 const SDK_GREEN := Color(0.4078, 0.5608, 0.3098)
 # One grid cell of the SDK terrain material, in metres. Measured off the SDK's
@@ -36,6 +41,7 @@ var _map_lbl: Label
 var _quality: OptionButton
 var _status: Label
 var _clear_btn: Button
+var _backdrop: CheckBox
 var _fetch: Node
 var _listed := ""
 var _busy := false
@@ -73,6 +79,12 @@ func _enter_tree() -> void:
 	row.add_child(_quality)
 	_dock.add_child(row)
 
+	_backdrop = CheckBox.new()
+	_backdrop.text = "Distant landscape (backdrop)"
+	_backdrop.tooltip_text = "The scenery beyond the terrain's edge - hills, cliffs and outlying buildings. Downloaded separately and independent of the terrain quality above. The flipbook smoke and haze cards are left out on purpose: they are camera-facing planes and would stand in the landscape as giant flat rectangles."
+	_backdrop.toggled.connect(_on_backdrop_toggled)
+	_dock.add_child(_backdrop)
+
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.custom_minimum_size = Vector2(220, 0)
@@ -90,6 +102,7 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	_remove_terrain(_root())
+	_remove_named(_root(), BACKDROP_SUFFIX)
 	if _dock != null:
 		remove_control_from_docks(_dock)
 		_dock.queue_free()
@@ -136,10 +149,15 @@ func _why_no_map() -> String:
 
 func _on_scene_changed(_s: Node) -> void:
 	# the pack is per map, so a scene change invalidates the list and anything
-	# already placed
-	_remove_terrain(_root())
+	# already placed - the backdrop included, or the previous map's 50 km of
+	# scenery stays sitting around the new one
+	var r: Node = _root()
+	_remove_terrain(r)
+	_remove_named(r, BACKDROP_SUFFIX)
 	if _quality != null:
 		_quality.select(0)
+	if _backdrop != null:
+		_backdrop.set_pressed_no_signal(false)
 	_listed = ""
 	_refresh_map()
 
@@ -273,6 +291,81 @@ func _quality_metres(i: int) -> float:
 		if str(r["name"]) == asset:
 			return float(r["target_m"])
 	return 0.0
+
+
+
+# ---- the distant landscape ---------------------------------------------------
+# Separate from the terrain on purpose: it is a separate download, it does not
+# change with terrain density, and someone may want the ground without 50 km of
+# scenery around it.
+func _on_backdrop_toggled(on: bool) -> void:
+	var root: Node = _root()
+	if root == null or _map_name() == "":
+		_status.text = _why_no_map()
+		_backdrop.set_pressed_no_signal(false)
+		return
+	if not on:
+		_remove_named(root, BACKDROP_SUFFIX)
+		_status.text = "Backdrop off."
+		return
+	if _busy:
+		_backdrop.set_pressed_no_signal(false)
+		return
+	if not _fetch.has_index():
+		_status.text = "Looking up what is available..."
+		if not await _fetch.fetch_index():
+			_status.text = "Could not reach the terrain list: " + str(_fetch.error)
+			_backdrop.set_pressed_no_signal(false)
+			return
+	var e: Dictionary = _fetch.backdrop_for(_map_name())
+	if e.is_empty():
+		_status.text = "No backdrop is published for %s." % _map_name()
+		_backdrop.set_pressed_no_signal(false)
+		return
+	var asset: String = str(e["name"])
+	_busy = true
+	_backdrop.disabled = true
+	if not _fetch.is_cached(asset):
+		_status.text = "Downloading the backdrop (%s)..." % String.humanize_size(int(e.get("bytes", 0)))
+	var path: String = await _fetch.ensure(asset)
+	_backdrop.disabled = false
+	_busy = false
+	if path == "":
+		_status.text = "Backdrop download failed: " + str(_fetch.error)
+		_backdrop.set_pressed_no_signal(false)
+		return
+	var node: Node = _fetch.load_mesh(path)
+	if node == null:
+		_status.text = "Could not read the backdrop: " + str(_fetch.error)
+		_backdrop.set_pressed_no_signal(false)
+		return
+	_remove_named(root, BACKDROP_SUFFIX)
+	node.name = "%s%s" % [_map_name(), BACKDROP_SUFFIX]
+	# The backdrop is scenery spread over tens of kilometres, so tiling its
+	# material to the terrain's own span would stretch the grid across all of it.
+	# Give it the same 12 m cell by scaling to ITS span.
+	var mat: Material = _tiled_material(_sdk_terrain_material(root, _map_name()),
+										_span_of(node))
+	var bound: int = _apply_material(node, mat)
+	if bound == 0:
+		node.queue_free()
+		_status.text = "The backdrop parsed but held no visible surfaces."
+		_backdrop.set_pressed_no_signal(false)
+		return
+	root.add_child(node)
+	_status.text = "Backdrop: %d surface(s)%s" % [bound,
+		"" if int(e.get("instances", 0)) == 0 else ", %d pieces" % int(e["instances"])]
+	_update_cache_button()
+
+
+# Remove by name suffix so terrain and backdrop can be cleared independently.
+func _remove_named(root: Node, suffix: String) -> void:
+	if root == null:
+		return
+	for c in root.get_children():
+		if String(c.name).contains(suffix):
+			root.remove_child(c)
+			c.queue_free()
 
 
 func _remove_terrain(root: Node) -> void:

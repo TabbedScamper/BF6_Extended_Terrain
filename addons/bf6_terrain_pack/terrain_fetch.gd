@@ -57,18 +57,42 @@ func fetch_index() -> bool:
 	return true
 
 
-# Every quality published for a map, finest first.
+# Every TERRAIN quality published for a map, finest first.
+#
+# Filtered on kind. The index also carries backdrop entries, which have no
+# density and would otherwise appear in the quality list as a nonsense row - and
+# sort_custom would be comparing a missing target_m while it did so.
 func qualities_for(level: String) -> Array:
 	var want: String = level.to_lower()
 	var out: Array = []
 	for name in _index:
 		var e: Dictionary = _index[name]
-		if str(e.get("level", "")).to_lower() == want:
-			var row: Dictionary = e.duplicate()
-			row["name"] = name
-			out.append(row)
+		if str(e.get("level", "")).to_lower() != want:
+			continue
+		if str(e.get("kind", "terrain")) != "terrain":
+			continue
+		var row: Dictionary = e.duplicate()
+		row["name"] = name
+		out.append(row)
 	out.sort_custom(func(a, b): return float(a["target_m"]) < float(b["target_m"]))
 	return out
+
+
+# The map's backdrop, or an empty dictionary when none is published. Not every
+# map has one: the distant landscape is authored per level and some are enclosed
+# enough not to need it.
+func backdrop_for(level: String) -> Dictionary:
+	var want: String = level.to_lower()
+	for name in _index:
+		var e: Dictionary = _index[name]
+		if str(e.get("level", "")).to_lower() != want:
+			continue
+		if str(e.get("kind", "")) != "backdrop":
+			continue
+		var row: Dictionary = e.duplicate()
+		row["name"] = name
+		return row
+	return {}
 
 
 func cached_path(asset: String) -> String:
