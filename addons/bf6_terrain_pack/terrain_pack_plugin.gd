@@ -94,15 +94,35 @@ func _root() -> Node:
 	return get_editor_interface().get_edited_scene_root()
 
 
-# The level's map name. Portal level scenes are named MP_<something>, and that
-# name is both the key into the index and the prefix of the terrain node the
-# material comes from.
+# The level's map name: the key into the index, and the prefix of the terrain
+# node the material comes from.
+#
+# THE ROOT NAME IS NOT ENOUGH. A stock level scene is named MP_<something>, but a
+# Creator workspace is a copy the author is free to rename, and renaming it is
+# normal. The SDK records the real base map on the root as `bf6_base_level` when
+# it imports one, so that meta is the authority and the node name is the
+# fallback. Checking only the name makes the plugin look broken on exactly the
+# scenes people actually build in.
 func _map_name() -> String:
 	var r: Node = _root()
 	if r == null:
 		return ""
+	var explicit: String = str(r.get_meta("bf6_base_level", ""))
+	if explicit.begins_with("MP_") and not explicit.contains("/") \
+			and not explicit.contains("\\"):
+		return explicit
 	var n: String = String(r.name)
 	return n if n.begins_with("MP_") else ""
+
+
+# What the panel says when it cannot identify the map. "Open a Portal level"
+# is unhelpful when a level IS open and simply was not recognised.
+func _why_no_map() -> String:
+	var r: Node = _root()
+	if r == null:
+		return "No scene is open. Open a Portal level to begin."
+	return ("\"%s\" does not look like a Portal level.\nExpected a root named "
+		+ "MP_... or a bf6_base_level property naming the base map.") % String(r.name)
 
 
 func _on_scene_changed(_s: Node) -> void:
@@ -120,11 +140,11 @@ func _refresh_map() -> void:
 		return
 	var map: String = _map_name()
 	if map == "":
-		_map_lbl.text = "Open a Portal level scene."
+		_map_lbl.text = _why_no_map()
 		_status.text = ""
 	else:
 		_map_lbl.text = "Map: %s" % map
-		_status.text = "Open the Quality list to see what is available."
+		_status.text = "Open the Quality list above to see what is available, then pick one."
 	_update_cache_button()
 
 
@@ -139,7 +159,11 @@ func _update_cache_button() -> void:
 
 func _fill_qualities() -> void:
 	var map: String = _map_name()
-	if map == "" or map == _listed or _busy:
+	if map == "":
+		# Opening an empty list and saying nothing is how this reads as broken.
+		_status.text = _why_no_map()
+		return
+	if map == _listed or _busy:
 		return
 	if not _fetch.has_index():
 		_status.text = "Looking up what is available…"
@@ -166,8 +190,9 @@ func _on_quality_selected(i: int) -> void:
 	if _busy:
 		return
 	var root: Node = _root()
-	if root == null:
-		_status.text = "Open a Portal level scene."
+	if root == null or _map_name() == "":
+		_status.text = _why_no_map()
+		_quality.select(0)
 		return
 	if i <= 0:
 		_remove_terrain(root)
