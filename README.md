@@ -5,10 +5,18 @@ Portal map, so a level stops ending in a void.
 
 ## Install
 
-1. Copy `addons/bf6_terrain_pack/` into your Godot project's `addons/` folder.
-2. Enable **BF6 Extended Terrain** in Project Settings, Plugins.
-3. Open a Portal level, pick a quality in the *Extended Terrain* dock, and it
-   downloads that map and shows it.
+1. Download **bf6_terrain_pack.zip** from the
+   [latest release](../../releases/latest).
+2. Extract it into your Godot project so you get `addons/bf6_terrain_pack`.
+3. Enable **BF6 Extended Terrain** in Project Settings, Plugins.
+4. Open a Portal level, pick a quality in the *Extended Terrain* dock, and it
+   downloads that map's terrain and shows it. Tick **Distant landscape** for the
+   scenery beyond it.
+
+The map meshes are not on that page on purpose. There are 133 of them, and a
+release listing all 133 buries the one file anyone actually needs. They live in
+a separate pre-release which the plugin looks up by tag and downloads from
+automatically.
 
 That is the whole install. This plugin is **standalone**: it needs the Godot
 Portal SDK and nothing else. Not the High Poly plugin, not any native extension,

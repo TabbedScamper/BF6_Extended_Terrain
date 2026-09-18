@@ -14,7 +14,17 @@ extends Node
 
 const REPO := "TabbedScamper/BF6_Extended_Terrain"
 const INDEX_URL := "https://raw.githubusercontent.com/%s/main/terrain_index.json"
-const RELEASE_API := "https://api.github.com/repos/%s/releases/latest"
+# THE MAP FILES LIVE IN A RELEASE OF THEIR OWN, fetched BY TAG rather than via
+# /releases/latest. There are 133 of them and a release page listing all 133
+# hides the one thing a person actually came for, which is the plugin. So the
+# latest release carries the plugin zip alone and the data sits in DATA_TAG,
+# marked as a pre-release so GitHub does not show it as the current one.
+#
+# Consequence worth knowing: adding maps means uploading to DATA_TAG, not to
+# whatever is newest, and shipping a plugin that expects assets the data release
+# does not have would break it. Bump DATA_TAG when the asset set changes shape.
+const DATA_TAG := "v1.0.0"
+const RELEASE_API := "https://api.github.com/repos/%s/releases/tags/%s"
 const CACHE_DIR := "user://bf6_terrain_pack"
 const USER_AGENT := "BF6-Extended-Terrain-Plugin"
 
@@ -260,9 +270,9 @@ func _get_to_file(url: String, dest: String) -> bool:
 
 
 func _fetch_asset_urls() -> bool:
-	var body: PackedByteArray = await _http_get(RELEASE_API % REPO)
+	var body: PackedByteArray = await _http_get(RELEASE_API % [REPO, DATA_TAG])
 	if body.is_empty():
-		error = "could not read the release listing"
+		error = "could not read the %s data release" % DATA_TAG
 		return false
 	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if not (parsed is Dictionary):
