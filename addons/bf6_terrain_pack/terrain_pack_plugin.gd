@@ -18,7 +18,13 @@ extends EditorPlugin
 
 const Fetch = preload("terrain_fetch.gd")
 
-const NODE_NAME := "_BF6_EXTENDED_TERRAIN"
+# The placed node is named MP_<Map>_Extended_Terrain_<N>m, e.g.
+# MP_Capstone_Extended_Terrain_8m, so it is obvious what it is and which detail
+# level is loaded without opening anything. NODE_SUFFIX is what removal matches
+# on, because the name carries the quality and therefore changes between loads;
+# matching the fixed part is what lets a different quality replace an existing
+# one instead of stacking a second copy on top of it.
+const NODE_SUFFIX := "_Extended_Terrain_"
 # Used only when a level has no <Map>_Terrain node to read a material from.
 const SDK_GREEN := Color(0.4078, 0.5608, 0.3098)
 
@@ -220,7 +226,10 @@ func _on_quality_selected(i: int) -> void:
 		_quality.select(0)
 		return
 	_remove_terrain(root)
-	node.name = NODE_NAME
+	# MP_Capstone_Extended_Terrain_8m, so the node says what it is and which
+	# detail level it is without anyone having to check.
+	var q_m: String = Fetch.metres(float(_quality_metres(i)))
+	node.name = "%s%s%sm" % [_map_name(), NODE_SUFFIX, q_m]
 	var mat: Material = _sdk_terrain_material(root, _map_name())
 	var bound: int = _apply_material(node, mat)
 	if bound == 0:
@@ -252,11 +261,24 @@ func _on_clear_cache() -> void:
 	_update_cache_button()
 
 
+# The metres-per-vertex behind the dropdown row, read back off the index so the
+# node name states the real density rather than the menu's wording.
+func _quality_metres(i: int) -> float:
+	var asset: String = str(_quality.get_item_metadata(i))
+	for r in _fetch.qualities_for(_map_name()):
+		if str(r["name"]) == asset:
+			return float(r["target_m"])
+	return 0.0
+
+
 func _remove_terrain(root: Node) -> void:
 	if root == null:
 		return
 	for c in root.get_children():
-		if c.name == NODE_NAME:
+		# match the fixed part: the name carries the detail level, so an exact
+		# match would miss a node placed at a different quality and leave two
+		# terrains stacked in the scene
+		if String(c.name).contains(NODE_SUFFIX):
 			root.remove_child(c)
 			c.queue_free()
 
