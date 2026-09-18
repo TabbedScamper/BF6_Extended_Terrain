@@ -3,10 +3,22 @@
 The full-map terrain that sits **outside** the playable area, for every Battlefield 6
 Portal map, so a level stops ending in a void.
 
-You do not download anything from this page by hand. The High Poly plugin fetches
-the map you have open, at the quality you pick, and caches it. The files live on
-the [Releases](../../releases) page because they are large; this repository itself
-only holds the index and these notes.
+## Install
+
+1. Copy `addons/bf6_terrain_pack/` into your Godot project's `addons/` folder.
+2. Enable **BF6 Extended Terrain** in Project Settings, Plugins.
+3. Open a Portal level, pick a quality in the *Extended Terrain* dock, and it
+   downloads that map and shows it.
+
+That is the whole install. This plugin is **standalone**: it needs the Godot
+Portal SDK and nothing else. Not the High Poly plugin, not any native extension,
+and **not Battlefield 6 installed** - which is the point, because the terrain is
+shipped ready-made for people who cannot extract it themselves.
+
+You do not download the meshes from this page by hand; the plugin fetches the map
+you have open at the quality you pick and caches it. They live on the
+[Releases](../../releases) page because they are large. This repository itself
+holds only the plugin, the index and these notes.
 
 ## Quality levels
 
@@ -42,6 +54,7 @@ The green grid material is **not** in these files and does not need to be. The
 plugin reads your SDK's own `M_LevelTerrain` off the level's existing
 `<Map>_Terrain` node and applies that, so the extended ground matches the playable
 ground exactly, in whatever your SDK ships, rather than an approximation of it.
+That also means no game material is redistributed here.
 
 The terrain is placed with `owner = null`, so Godot will never save it into your
 scene and it cannot be exported by accident. The shipped low-poly terrain
