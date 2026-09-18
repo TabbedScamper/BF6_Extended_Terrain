@@ -270,8 +270,7 @@ func _on_quality_selected(i: int) -> void:
 		_status.text = "The terrain parsed but held no visible surfaces."
 		_quality.select(0)
 		return
-	root.add_child(node)
-	# owner stays null deliberately: see the note at the top of this file
+	_attach(root, node)
 	_status.text = "Showing %s\n%d surface(s), material: %s" % [
 		asset, bound,
 		"the level's own terrain material" if mat != null else "fallback green"]
