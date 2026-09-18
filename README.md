@@ -46,6 +46,32 @@ The game's own terrain data is 0.5 m or 1.0 m per sample. Those densities are no
 published here because a single map at 0.5 m is several gigabytes of mesh. If you
 own the game, the High Poly plugin reads it from your install at full detail.
 
+## The distant landscape
+
+The terrain above is the heightfield, and the heightfield stops at its own edge.
+Everything past it - hills, cliffs, outlying buildings, the whole horizon - is
+separate geometry, published per map as a **backdrop** and switched on with its
+own checkbox. It is independent of the terrain quality, so changing density does
+not drop it.
+
+It is a lot further out than the terrain. On MP_Capstone the terrain covers
+4,096 m and the backdrop reaches roughly 50 km across; on Golmud Railway it is
+nearer 89 km. Sizes run from about 9 MB to 107 MB per map.
+
+25 of the 27 maps have one. **MP_Portal_Ocean** and **MP_Portal_Sand** do not,
+which is correct rather than missing: they are flat sandbox maps with no
+authored scenery around them. Portal Ocean's terrain measures a height range of
+exactly 0 m.
+
+**The flipbook FX cards are deliberately left out.** The distant smoke columns
+and haze sheets are camera-facing planes. In the game they always face you, so
+they read as atmosphere; baked into static geometry they become enormous flat
+rectangles standing in the landscape. 298 such instances across 112 groups were
+excluded from the published set. They are identified by name (`ob_fx_*`,
+`*_fx_bd_*`) rather than by material, because material detection catches only a
+fraction of them: on Dumbo just one of four such sheets carries the tell-tale
+material.
+
 ## What is in the files
 
 Geometry only: positions, normals and UVs. No textures and no materials.
